@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <style>
+            /** wrote a little CSS to give the table borders */
+            body{
+                background: #FEFEFE;
+            }
+            thead{
+                background: grey;
+            }
+            thead th{
+                font-weight: bold;
+            }
+            th{
+                font-weight: normal;
+                border: 1px solid lightgrey;
+            }
+            tr:last-child{
+                background: lightgrey;
+            }
+        </style>
+    </head>
+    <body>
+
+        <!-- define HTML table with pre-set headers -->
+        <table style="width: 70%; margin: 0 auto; border-spacing: 0px;">
+            <thead>
+                <tr>
+                    <th>
+                        Season
+                    </th>
+                    <th>
+                        Age
+                    </th>
+                    <th>
+                        Team
+                    </th>
+                    <th>
+                        Country
+                    </th>
+                    <th>
+                        Competition
+                    </th>
+                    <th>
+                        Games
+                    </th>
+                    <th>
+                        Minutes
+                    </th>
+                    <th>
+                        Goals
+                    </th>
+                    <th>
+                        Assists
+                    </th>
+                    <th>
+                        Goals/90
+                    </th>
+                </tr>
+            </thead>
+            <!-- gave an ID to the table's body so that I can manipulate its data in the script tag -->
+            <tbody id="tableStats">
+
+            </tbody>
+        </table>
+
+        <!-- data.js contains soccer data from Excel files -->
+        <script src="data.js"></script>
+        <script>
+
+            // table should only include stats from domestic clubs
+            // exclude national team, international, cup competitions
+            // to do this, create dictionaries/hashmaps of teams and competitions I am interested in capturing data for. This will be faster than looping through each team/competition within the stats loop. Time complexity is reduced from O(n^2) with the nested for loops to somewhere around O(logn) with the dictionary
+
+            // create a new object for the team dictionary, then loop through each team in the teams array. If not a national team, assign an object of the team name and country to that team's ID
+            let teamDictionary = new Object()
+            for(const team of teams){
+                teamDictionary[team.team_id] = (team.team_type != 'national_team' ? 
+                {
+                    name: team.name,
+                    country: team.country
+                }
+                : null)
+            }
+
+            // create a new object for the competition dictionary, then loop through each competition in the competitions array. If not an international or cup competition, assign an object of the competition name and country to that competition's ID
+            let competitionDictionary = new Object()
+            for(const competition of competitions){
+                competitionDictionary[competition.comp_id] = (competition.scope != 'international' && competition.competition_format != 'cup' ? 
+                {
+                    name: competition.name,
+                    country: competition.country
+                }
+                : null)
+            }
+
+            // will need to calculate goals per 90 minutes in various rows of the table, define a function so that I do not need to write this formula numerous times
+            function getGoalsPerNinety(goals, minutes){
+                return (Number(goals) / (Number(minutes) / 90)).toFixed(2)
+            }
+
+            // calculate the number of milliseconds in one year, keeping in mind leap years (364 and a quarter days per year). Will use this when calculating player's age during a particular season
+            const millisecondsInYear = 24 * 60 * 60 * 1000 * 364.25
+
+
+
+            // call the function getStatsByPlayer, which will allow the user to create a table of any player given their ID
+            const getStats = getStatsByPlayer('dea698d9') // Cristiano Ronaldo
+
+            // with the stats of the chosen player calculated, call fillTable to display the stats in the HTML table, as well as the summed values in the final row of the table
+            fillTable(getStats)
+
+
+            
+          
+            // given a player's ID, calculate their stats and display them in the table
+            function getStatsByPlayer(player){
+
+                // in some years, a player may play for multiple teams and in multiple competitions. When looping through all stats, I will push an object to the array with a unique key (SEASON:TEAM_ID:COMPETITION_ID) to ensure these scenarios are captured
+                let filteredStats = []   
+
+                // iterate through all players, when player with given ID is found, store this player's birth date in birthDate (will be used to calculate age in August of current season)
+                let birthDate
+                for(const person of people){
+                    if(person.person_id == player){
+                        birthDate = person.birth_date
+                        break;
+                    }
+                    
+                }
+
+                // iterate through all stats in stats array
+                for(const stat of stats){
+                    
+                    // use dictionaries to determine if this particular set of statistics is relevant to our table
+                    if(stat.person_id == player && teamDictionary[stat.team_id] && competitionDictionary[stat.comp_id]){
+
+                        // assign a unique identifier to each season. As mentioned above, I have chosen (SEASON:TEAM_ID:COMPETITION_ID)
+                        const identifier = stat.season + ':' + stat.team_id + ':' + stat.comp_id
+
+                        // if no stats for this season, team, and competition have been seen yet, create object for this season, assign initial values
+                        if(!filteredStats[identifier]){
+                            filteredStats[identifier] = {
+                                // to calculate the player's age on August 1st of the current season, get the total number of milliseconds between August 1st of season (using 12PM UTC to account for most timezone differences) and the player's birth date. Divide this by the number of of milliseconds in one year
+                                ageOnAugustFirst: Math.floor((new Date(String(stat.season.split('-')[0]) + '-08-01T12:00:00.000Z') - new Date(birthDate)) / (millisecondsInYear)),
+                                team: teamDictionary[stat.team_id].name,
+                                country: teamDictionary[stat.team_id].country,
+                                competition: competitionDictionary[stat.comp_id].name,
+                                games: Number(stat.games),
+                                minutes: Number(stat.minutes),
+                                goals: Number(stat.goals),
+                                assists: Number(stat.assists),
+                                goalsPerNinety: getGoalsPerNinety(Number(stat.goals), Number(stat.minutes)),
+
+                            }
+                        }
+                        else{ // stats have already been seen for this season, increment values where applicable
+                            filteredStats[identifier] = {
+                                games: filteredStats[stat.season].games + Number(stat.games),
+                                minutes: filteredStats[stat.season].minutes + Number(stat.minutes),
+                                goals: filteredStats[stat.season].goals + Number(stat.goals),
+                                assists: filteredStats[stat.season].assists + Number(stat.assists),
+                                goalsPerNinety: getGoalsPerNinety(filteredStats[stat.season].goals, filteredStats[stat.season].minutes),
+                            }
+                        }
+
+                    }
+                    
+                }
+
+
+                // sort stats by the year, as defined in the coding test's instructions
+                let statsSortedByYear = Object.keys(filteredStats).sort().reduce(
+                    (obj, key) => { 
+                        obj[key] = filteredStats[key]; 
+                        return obj;
+                    }, 
+                    {}
+                )
+
+
+                // stats are sorted by year with the reduce function but not necessarily by team
+                // a player could switch teams during the same year, the table should show the previous team above the new team
+                // this code assumes that as long as the player played with a team in two consecutive years, they must have left the original team before going to the new team in the next year. This is not always true in reality
+                // to solve this, the data would need to include the dates in which a player was signed to a particular team
+                const keys = Object.keys(statsSortedByYear)
+                const numKeys = keys.length
+
+                // iterate through keys of the sorted stats, if year is preceded by the same year, determine if the team matches the previous year's team. If so, then swap positions of the seasons in the array
+                // need to start at i == 1, since first season will never have a preceding season
+                for(var i = 1; i < numKeys; i++){
+
+                    // get year value of preceding season
+                    const seasonPrior = String(keys[i - 1].split(':')[0])
+                    // get team value of preceding season
+                    const teamPrior  = String(keys[i - 1].split(':')[1])
+
+                    // get year value of current season
+                    const seasonLater = String(keys[i].split(':')[0])
+                    // get team value of current season
+                    const teamLater  = String(keys[i].split(':')[1])
+
+                    // if year values match, check condition described above, if true then swap
+                    if(seasonPrior == seasonLater){
+                        if(i > 2 && teamLater == String(keys[i - 2]).split(':')[1]){
+                            // swap positions
+                            const tmp = statsSortedByYear[keys[i - 1]]
+                            statsSortedByYear[keys[i - 1]] = statsSortedByYear[keys[i]]
+                            statsSortedByYear[keys[i]] = tmp
+                        }
+                    }
+                    
+                }
+
+                return statsSortedByYear
+
+            }
+
+            // given a player's stats (returned by getStatsByPlayer), fill table and calculate totals for final row of table
+            function fillTable(playerStats){
+
+                // access table element identified by the ID tableStats, assign it to tableStats constant
+                const tableStats = document.getElementById('tableStats')
+                // get keys (SEASON:TEAM_ID:COMPETITION_ID) of each stat
+                const statsKeys = Object.keys(playerStats)
+
+                // create empty object of totals, will add to it for each season
+                let totals = {
+                    seasons: {},
+                    age: null,
+                    clubs: {},
+                    country: null,
+                    competitions: {},
+                    games: 0,
+                    minutes: 0,
+                    goals: 0,
+                    assists: 0,
+                    goalsPerNinety: 0,
+
+                }
+
+                // iterate through each season
+                for(const season of statsKeys){
+
+                    // build row and cell elements, fill cell with year
+                    const row = document.createElement('tr')
+                    const column = document.createElement('th')
+                    column.innerHTML = String(season).split(':')[0]
+                    row.appendChild(column)
+
+                    // fill row with row data by iterating through keys of the season array. Order of keys corresponds to HTML table column order
+                    const seasonKeys = Object.keys(playerStats[season])
+                    for(const s of seasonKeys){
+
+                        const column = document.createElement('th')
+                        column.innerHTML = (typeof playerStats[season][s] == 'number' ? playerStats[season][s].toLocaleString() : playerStats[season][s]) // will use toLocaleString() on numbers to display numbers with commas, as shown in the included .png example
+                        row.appendChild(column)
+
+                    }
+                    tableStats.appendChild(row)
+
+                    // add values to totals object
+                    totals.seasons[String(season).split(':')[0]] = true
+                    totals.clubs[String(season).split(':')[1]] = true
+                    totals.competitions[String(season).split(':')[2]] = true
+                    totals.games += Number(playerStats[season].games)
+                    totals.minutes += Number(playerStats[season].minutes)
+                    totals.goals += Number(playerStats[season].goals)
+                    totals.assists += Number(playerStats[season].assists)
+                    totals.goalsPerNinety = getGoalsPerNinety(totals.goals, totals.minutes)
+
+                }
+
+                // create row element for totals
+                const row = document.createElement('tr')
+
+                // iterate through totals object
+                const totalKeys = Object.keys(totals)
+                for(const total of totalKeys){
+                
+                    const column = document.createElement('th')
+                    if(totals[total] != null){
+                        if(typeof totals[total] == 'object'){ // for objects (seasons, clubs, competitions), need to calculate number of keys that exist
+                            const keyOfTotal = Object.keys(totals[total])
+                            const keyOfTotalLength = keyOfTotal.length
+                            // for "Seasons", "Clubs", "Competitions", first letter should be capitalized while last year should be "s", unless there is only 1 season/club/competition
+                            column.innerHTML = keyOfTotalLength + (keyOfTotalLength != 1 ? (' ' + total.charAt(0).toUpperCase() + total.slice(1)) : ((' ' + total.charAt(0).toUpperCase() + total.slice(1))).slice(0, -1)) 
+                        }
+                        else{ // if not an object, it will be an integer. Just display the value as is
+                            column.innerHTML = (typeof totals[total] == 'number' ? totals[total].toLocaleString() : totals[total]) 
+                        }
+                    }
+                    else{
+                        column.innerHTML = ''
+                    }
+                    
+                    row.appendChild(column)
+
+                }
+
+                tableStats.appendChild(row)
+
+            }
+            
+        
+        </script>
+    
+    </body>
+
+</html>
